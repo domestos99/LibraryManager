@@ -1,4 +1,5 @@
 ﻿using System;
+using Microsoft.Web.LibraryManager.Cache;
 using Microsoft.Web.LibraryManager.Contracts;
 
 namespace Microsoft.Web.LibraryManager.Providers.json
@@ -20,7 +21,7 @@ namespace Microsoft.Web.LibraryManager.Providers.json
                 throw new ArgumentNullException(nameof(hostInteraction));
             }
 
-            return new JsonProvider(hostInteraction);
+            return new JsonProvider(hostInteraction, new CacheService(WebRequestHandler.Instance));
         }
     }
 }

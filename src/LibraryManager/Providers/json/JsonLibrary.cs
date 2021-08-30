@@ -7,7 +7,7 @@ namespace Microsoft.Web.LibraryManager.Providers.json
     {
         public string Name { get; set; }
         public string ProviderId { get; set; }
-        public string Version => "1.0";
+        public string Version { get; set; }
         public IReadOnlyDictionary<string, bool> Files { get; set; }
 
         public override string ToString()

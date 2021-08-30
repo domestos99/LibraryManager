@@ -17,7 +17,7 @@ namespace Microsoft.Web.LibraryManager.Cache
     /// </summary>
     public class CacheService : ICacheService
     {
-        private const int DefaultCacheExpiresAfterDays = 1;
+        private const int DefaultCacheExpiresAfterDays = 0;
         private const int MaxConcurrentDownloads = 10;
 
         private readonly IWebRequestHandler _requestHandler;
