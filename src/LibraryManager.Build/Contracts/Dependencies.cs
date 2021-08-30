@@ -9,6 +9,7 @@ using Microsoft.Web.LibraryManager.Contracts;
 using Microsoft.Web.LibraryManager.Providers.Cdnjs;
 using Microsoft.Web.LibraryManager.Providers.FileSystem;
 using Microsoft.Web.LibraryManager.Providers.jsDelivr;
+using Microsoft.Web.LibraryManager.Providers.json;
 using Microsoft.Web.LibraryManager.Providers.Unpkg;
 
 namespace Microsoft.Web.LibraryManager.Build.Contracts
@@ -54,6 +55,7 @@ namespace Microsoft.Web.LibraryManager.Build.Contracts
                 new CdnjsProviderFactory(),
                 new UnpkgProviderFactory(packageSearch, packageInfoFactory),
                 new JsDelivrProviderFactory(packageSearch, packageInfoFactory),
+                new JsonProviderFactory()
             };
 
             foreach (IProviderFactory factory in factories)

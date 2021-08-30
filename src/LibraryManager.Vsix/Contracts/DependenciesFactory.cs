@@ -7,6 +7,7 @@ using Microsoft.Web.LibraryManager.LibraryNaming;
 using Microsoft.Web.LibraryManager.Providers.Cdnjs;
 using Microsoft.Web.LibraryManager.Providers.FileSystem;
 using Microsoft.Web.LibraryManager.Providers.jsDelivr;
+using Microsoft.Web.LibraryManager.Providers.json;
 using Microsoft.Web.LibraryManager.Providers.Unpkg;
 
 namespace Microsoft.Web.LibraryManager.Vsix.Contracts
@@ -32,6 +33,7 @@ namespace Microsoft.Web.LibraryManager.Vsix.Contracts
                 new CdnjsProviderFactory(),
                 new UnpkgProviderFactory(packageSearch, packageInfoFactory),
                 new JsDelivrProviderFactory(packageSearch, packageInfoFactory),
+                new JsonProviderFactory()
             };
         }
 
