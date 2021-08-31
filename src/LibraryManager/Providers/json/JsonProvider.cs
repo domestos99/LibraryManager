@@ -20,7 +20,7 @@ namespace Microsoft.Web.LibraryManager.Providers.json
         private const string DownloadUrlFormat = "http://localhost:62748/libraries/{0}/{1}/{2}";
 
         /// <summary>Internal use only</summary>
-        public JsonProvider(IHostInteraction hostInteraction, CacheService cacheService)
+        public JsonProvider(IHostInteraction hostInteraction, CustomCacheService cacheService)
             : base(hostInteraction, cacheService)
         {
         }

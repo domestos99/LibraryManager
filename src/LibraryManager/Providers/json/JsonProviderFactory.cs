@@ -21,7 +21,7 @@ namespace Microsoft.Web.LibraryManager.Providers.json
                 throw new ArgumentNullException(nameof(hostInteraction));
             }
 
-            return new JsonProvider(hostInteraction, new CacheService(WebRequestHandler.Instance));
+            return new JsonProvider(hostInteraction, new CustomCacheService(WebRequestHandler.Instance));
         }
     }
 }

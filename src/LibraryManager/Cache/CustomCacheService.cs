@@ -1,13 +1,9 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
-// Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Web.LibraryManager.Contracts;
-using Microsoft.Web.LibraryManager.Contracts.Caching;
 using Microsoft.Web.LibraryManager.Utilities;
 
 namespace Microsoft.Web.LibraryManager.Cache
@@ -15,9 +11,9 @@ namespace Microsoft.Web.LibraryManager.Cache
     /// <summary>
     /// Service to manage basic operations on libraries cache
     /// </summary>
-    public class CacheService : ICacheService
+    public class CustomCacheService : CacheService
     {
-        private const int DefaultCacheExpiresAfterDays = 0;
+        private const int DefaultCacheExpiresAfterMinutes = 10;
         private const int MaxConcurrentDownloads = 10;
 
         private readonly IWebRequestHandler _requestHandler;
@@ -25,29 +21,12 @@ namespace Microsoft.Web.LibraryManager.Cache
         private static string CacheFolderValue;
 
         /// <summary>
-        /// Instantiate the CacheService
+        /// Instantiate the CustomCacheService
         /// </summary>
         /// <param name="requestHandler"></param>
-        public CacheService(IWebRequestHandler requestHandler)
+        public CustomCacheService(IWebRequestHandler requestHandler) : base(requestHandler)
         {
             _requestHandler = requestHandler;
-        }
-
-        /// <summary>
-        /// Defines the root cache directory.  This should be consistent across all LibMan tools.
-        /// </summary>
-        public static string CacheFolder
-        {
-            get
-            {
-                if (string.IsNullOrEmpty(CacheFolderValue))
-                {
-                    string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                    CacheFolderValue = Path.Combine(localAppData, ".librarymanager", "cache");
-                }
-
-                return CacheFolderValue;
-            }
         }
 
         /// <summary>
@@ -87,11 +66,11 @@ namespace Microsoft.Web.LibraryManager.Cache
             }
         }
 
-        private async Task<string> GetResourceAsync(string url, string localFile, int expiration, CancellationToken cancellationToken)
+        private async Task<string> GetResourceAsync(string url, string localFile, int expirationMinutes, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!File.Exists(localFile) || File.GetLastWriteTime(localFile) < DateTime.Now.AddDays(-expiration))
+            if (!File.Exists(localFile) || File.GetLastWriteTime(localFile) < DateTime.Now.AddMinutes(-expirationMinutes))
             {
                 await DownloadToFileAsync(url, localFile, attempts: 1, cancellationToken: cancellationToken).ConfigureAwait(false);
             }
@@ -102,7 +81,7 @@ namespace Microsoft.Web.LibraryManager.Cache
         /// <summary>
         /// Refreshes the cache for the given set of files if expired
         /// </summary>
-        public virtual async Task RefreshCacheAsync(IEnumerable<CacheFileMetadata> librariesCacheMetadata, ILogger logger, CancellationToken cancellationToken)
+        public override async Task RefreshCacheAsync(IEnumerable<CacheFileMetadata> librariesCacheMetadata, ILogger logger, CancellationToken cancellationToken)
         {
             await ParallelUtility.ForEachAsync(DownloadFileIfNecessaryAsync, MaxConcurrentDownloads, librariesCacheMetadata, cancellationToken).ConfigureAwait(false);
 
@@ -117,12 +96,12 @@ namespace Microsoft.Web.LibraryManager.Cache
         }
 
         /// <inheritdoc />
-        public virtual async Task<string> GetContentsFromUriWithCacheFallbackAsync(string url, string cacheFile, CancellationToken cancellationToken)
+        public override async Task<string> GetContentsFromUriWithCacheFallbackAsync(string url, string cacheFile, CancellationToken cancellationToken)
         {
             string contents;
             try
             {
-                contents = await GetResourceAsync(url, cacheFile, DefaultCacheExpiresAfterDays, cancellationToken).ConfigureAwait(false);
+                contents = await GetResourceAsync(url, cacheFile, DefaultCacheExpiresAfterMinutes, cancellationToken).ConfigureAwait(false);
             }
             catch (ResourceDownloadException)
             {
@@ -141,7 +120,7 @@ namespace Microsoft.Web.LibraryManager.Cache
         }
 
         /// <inheritdoc />
-        public virtual async Task<string> GetContentsFromCachedFileWithWebRequestFallbackAsync(string cacheFile, string url, CancellationToken cancellationToken)
+        public override async Task<string> GetContentsFromCachedFileWithWebRequestFallbackAsync(string cacheFile, string url, CancellationToken cancellationToken)
         {
             string contents;
             if (File.Exists(cacheFile))
@@ -150,7 +129,7 @@ namespace Microsoft.Web.LibraryManager.Cache
             }
             else
             {
-                contents = await GetResourceAsync(url, cacheFile, DefaultCacheExpiresAfterDays, cancellationToken).ConfigureAwait(false);
+                contents = await GetResourceAsync(url, cacheFile, DefaultCacheExpiresAfterMinutes, cancellationToken).ConfigureAwait(false);
             }
 
             return contents;

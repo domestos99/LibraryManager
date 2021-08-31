@@ -118,106 +118,38 @@ namespace Microsoft.Web.LibraryManager.Providers.json
             return completionSet;
         }
 
-        private async Task<IEnumerable<Asset>> GetAssetsAsync(string groupName, CancellationToken cancellationToken)
+        /// <summary>
+        /// Searches the catalog for the specified search term.
+        /// </summary>
+        /// <param name="term">The search term.</param>
+        /// <param name="maxHits">The maximum number of results to return.</param>
+        /// <param name="cancellationToken">A token that allows the search to be cancelled.</param>
+        /// <returns></returns>
+        public async Task<IReadOnlyList<ILibraryGroup>> SearchAsync(string term, int maxHits, CancellationToken cancellationToken)
         {
-            var assets = new List<Asset>();
-
-            if (!await EnsureCatalogAsync(CancellationToken.None).ConfigureAwait(false))
+            if (!await EnsureCatalogAsync(cancellationToken).ConfigureAwait(false))
             {
-                return default;
+                return Enumerable.Empty<ILibraryGroup>().ToList();
             }
 
-            try
+            IEnumerable<JsonLibraryGroup> results;
+
+            if (string.IsNullOrEmpty(term))
             {
-                assets = ConvertToAssets(_libraryGroups);
+                results = _libraryGroups.Take(maxHits);
             }
-            catch (Exception)
+            else
             {
-                throw new InvalidLibraryException(groupName, _provider.Id);
-            }
-
-            return assets;
-        }
-
-        internal List<Asset> ConvertToAssets(string json)
-        {
-            return ConvertToAssets(ConvertToLibraryGroups(json));
-        }
-        internal List<Asset> ConvertToAssets(IEnumerable<JsonLibraryGroup> data)
-        {
-            try
-            {
-                var output = new List<Asset>();
-
-                foreach (JsonLibraryGroup lib in data)
-                {
-                    var asset = new Asset()
-                    {
-                        Version = lib.Version,
-                        Files = lib.Files.ToArray(),
-                        DefaultFile = lib.DisplayName
-                    };
-                    output.Add(asset);
-                }
-
-                return output;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.Write(ex);
-
-                return null;
-            }
-        }
-
-        private async Task<bool> EnsureCatalogAsync(CancellationToken cancellationToken)
-        {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return false;
+                results = GetSortedSearchResult(term).Take(maxHits);
             }
 
-            try
+            foreach (JsonLibraryGroup group in results)
             {
-                //string json = "";
-                //using (var wc = new WebClient())
-                //{
-                //    wc.Encoding = Encoding.UTF8;
-                //    json = wc.DownloadString(CatalogUrl);
-                //}
-
-                //if (string.IsNullOrWhiteSpace(json))
-                //{
-                //    return false;
-                //}
-
-                string json = await _cacheService.GetContentsFromUriWithCacheFallbackAsync(CatalogUrl, _cacheFile, cancellationToken).ConfigureAwait(false);
-
-                _libraryGroups = ConvertToLibraryGroups(json);
-
-                return _libraryGroups != null;
+                string groupName = group.DisplayName;
+                group.DisplayInfosTask = ct => GetLibraryVersionsAsync(groupName, ct);
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.Write(ex);
-                return false;
-            }
-        }
 
-        public IEnumerable<JsonLibraryGroup> ConvertToLibraryGroups(string json)
-        {
-            try
-            {
-                string obj = ((JObject)JsonConvert.DeserializeObject(json))["results"].ToString();
-
-                return JsonConvert.DeserializeObject<IEnumerable<JsonLibraryGroup>>(obj).ToArray();
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.Write(ex);
-
-                return null;
-            }
+            return results.ToList();
         }
 
         /// <summary>
@@ -263,56 +195,47 @@ namespace Microsoft.Web.LibraryManager.Providers.json
 
         }
 
-
-        private Task<IReadOnlyDictionary<string, bool>> GetFilesAsync(string libraryId)
-        {
-            return Task.Run<IReadOnlyDictionary<string, bool>>(() =>
-            {
-                if (Directory.Exists(libraryId))
-                {
-                    return Directory.EnumerateFiles(libraryId)
-                            .Select(f => Path.GetFileName(f))
-                            .ToDictionary((k) => k, (v) => true);
-                }
-                else
-                {
-                    return new Dictionary<string, bool>() { [Path.GetFileName(libraryId)] = true };
-                }
-            });
-        }
-
         /// <summary>
-        /// Searches the catalog for the specified search term.
+        /// Gets the latest version of the library.
         /// </summary>
-        /// <param name="term">The search term.</param>
-        /// <param name="maxHits">The maximum number of results to return.</param>
+        /// <param name="libraryId">The library identifier.</param>
+        /// <param name="includePreReleases">if set to <c>true</c> includes pre-releases.</param>
         /// <param name="cancellationToken">A token that allows the search to be cancelled.</param>
-        /// <returns></returns>
-        public async Task<IReadOnlyList<ILibraryGroup>> SearchAsync(string term, int maxHits, CancellationToken cancellationToken)
+        /// <returns>
+        /// The library identifier of the latest released version.
+        /// </returns>
+        public async Task<string> GetLatestVersion(string libraryName, bool includePreReleases, CancellationToken cancellationToken)
         {
+            if (string.IsNullOrEmpty(libraryName))
+            {
+                return null;
+            }
+
             if (!await EnsureCatalogAsync(cancellationToken).ConfigureAwait(false))
             {
-                return Enumerable.Empty<ILibraryGroup>().ToList();
+                return null;
             }
 
-            IEnumerable<JsonLibraryGroup> results;
+            JsonLibraryGroup group = _libraryGroups.FirstOrDefault(l => l.DisplayName == libraryName);
 
-            if (string.IsNullOrEmpty(term))
+            if (group == null)
             {
-                results = _libraryGroups.Take(maxHits);
-            }
-            else
-            {
-                results = GetSortedSearchResult(term).Take(maxHits);
+                return null;
             }
 
-            foreach (JsonLibraryGroup group in results)
+            string first = includePreReleases
+                ? (await GetLibraryVersionsAsync(group.DisplayName, cancellationToken).ConfigureAwait(false))
+                                                                                      .Select(v => SemanticVersion.Parse(v))
+                                                                                      .Max()
+                                                                                      .ToString()
+                : group.Version;
+
+            if (!string.IsNullOrEmpty(first))
             {
-                string groupName = group.DisplayName;
-                group.DisplayInfosTask = ct => GetLibraryVersionsAsync(groupName, ct);
+                return first;
             }
 
-            return results.ToList();
+            return null;
         }
 
         private IEnumerable<JsonLibraryGroup> GetSortedSearchResult(string term)
@@ -335,13 +258,6 @@ namespace Microsoft.Web.LibraryManager.Providers.json
         }
 
 
-        private async Task<IEnumerable<string>> GetLibraryVersionsAsync(string groupName, CancellationToken cancellationToken)
-        {
-            IEnumerable<Asset> assets = await GetAssetsAsync(groupName, cancellationToken).ConfigureAwait(false);
-
-            return assets?.Select(a => a.Version);
-        }
-
         private static string NormalizedGroupName(string groupName)
         {
             if (groupName.EndsWith("js", StringComparison.OrdinalIgnoreCase))
@@ -354,18 +270,104 @@ namespace Microsoft.Web.LibraryManager.Providers.json
             return groupName;
         }
 
-        /// <summary>
-        /// Gets the latest version of the library.
-        /// </summary>
-        /// <param name="libraryId">The library identifier.</param>
-        /// <param name="includePreReleases">if set to <c>true</c> includes pre-releases.</param>
-        /// <param name="cancellationToken">A token that allows the search to be cancelled.</param>
-        /// <returns>
-        /// The library identifier of the latest released version.
-        /// </returns>
-        public Task<string> GetLatestVersion(string libraryId, bool includePreReleases, CancellationToken cancellationToken)
+        private async Task<bool> EnsureCatalogAsync(CancellationToken cancellationToken)
         {
-            return Task.FromResult(string.Empty);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return false;
+            }
+
+            try
+            {
+                string json = await _cacheService.GetContentsFromUriWithCacheFallbackAsync(CatalogUrl, _cacheFile, cancellationToken).ConfigureAwait(false);
+
+                _libraryGroups = ConvertToLibraryGroups(json);
+
+                return _libraryGroups != null;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.Write(ex);
+                return false;
+            }
         }
+
+        private async Task<IEnumerable<string>> GetLibraryVersionsAsync(string groupName, CancellationToken cancellationToken)
+        {
+            IEnumerable<Asset> assets = await GetAssetsAsync(groupName, cancellationToken).ConfigureAwait(false);
+
+            return assets?.Select(a => a.Version);
+        }
+
+
+        private async Task<IEnumerable<Asset>> GetAssetsAsync(string groupName, CancellationToken cancellationToken)
+        {
+            var assets = new List<Asset>();
+
+            if (!await EnsureCatalogAsync(CancellationToken.None).ConfigureAwait(false))
+            {
+                return default;
+            }
+
+            try
+            {
+                assets = ConvertToAssets(_libraryGroups);
+            }
+            catch (Exception)
+            {
+                throw new InvalidLibraryException(groupName, _provider.Id);
+            }
+
+            return assets;
+        }
+
+        public IEnumerable<JsonLibraryGroup> ConvertToLibraryGroups(string json)
+        {
+            try
+            {
+                string obj = ((JObject)JsonConvert.DeserializeObject(json))["results"].ToString();
+
+                return JsonConvert.DeserializeObject<IEnumerable<JsonLibraryGroup>>(obj).ToArray();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.Write(ex);
+
+                return null;
+            }
+        }
+
+
+        internal List<Asset> ConvertToAssets(string json)
+        {
+            return ConvertToAssets(ConvertToLibraryGroups(json));
+        }
+        internal List<Asset> ConvertToAssets(IEnumerable<JsonLibraryGroup> data)
+        {
+            try
+            {
+                var output = new List<Asset>();
+
+                foreach (JsonLibraryGroup lib in data)
+                {
+                    var asset = new Asset()
+                    {
+                        Version = lib.Version,
+                        Files = lib.Files.ToArray(),
+                        DefaultFile = lib.DisplayName
+                    };
+                    output.Add(asset);
+                }
+
+                return output;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.Write(ex);
+
+                return null;
+            }
+        }
+                
     }
 }
